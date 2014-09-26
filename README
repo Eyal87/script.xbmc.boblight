@@ -1,6 +1,8 @@
 https://www.youtube.com/watch?v=Ig1LmKwUA20
 https://www.youtube.com/watch?v=3otxXST1d50
 
+Currently the config file I use is from hyperion. It's not the default boblight connfig file. You can create the file using the hyperion config app: https://github.com/tvdzwan/hyperion/wiki/Configuration
+
 This is the boblight addon for using the open source ambilight clone ( http://code.google.com/p/boblight/ ) from within XBMC.
 
 For accessing the settings during video playback just put the file script.xbmc.boblight.keymap.xml into your "userdata/keymaps" folder. 
