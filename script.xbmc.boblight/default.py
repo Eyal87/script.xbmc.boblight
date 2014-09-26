@@ -20,6 +20,7 @@ import xbmc
 import xbmcaddon
 import xbmcgui
 import os
+from threading import Thread
 
 __addon__      = xbmcaddon.Addon()
 __cwd__        = __addon__.getAddonInfo('path')
@@ -36,11 +37,12 @@ sys.path.append (__resource__)
 
 from settings import *
 from tools import *
+#from boblightada import *
 
-log( "[%s] - Version: %s Started" % (__scriptname__,__version__))
+log( "[%s] - Version: %s' Started" % (__scriptname__,__version__))
 
-capture_width  = 32
-capture_height = 32
+capture_width  = 32 #32
+capture_height = 32 #32
 settings       = settings()
 
 class MyPlayer( xbmc.Player ):
@@ -52,10 +54,6 @@ class MyPlayer( xbmc.Player ):
   def onPlayBackStopped( self ):
     self.playing = False
     myPlayerChanged( 'stop' )
-
-  def onPlayBackPaused( self ):
-    myPlayerChanged( 'paused' )
-
   
   def onPlayBackEnded( self ):
     self.playing = False
@@ -100,11 +98,9 @@ class Main():
   
     if not ret:
       log("connection to boblightd failed: %s" % bob.bob_geterror())
+      text = __language__(32500)
       if self.warning < 3 and settings.other_misc_notifications:
-        xbmc.executebuiltin("XBMC.Notification(%s,%s,%s,%s)" % (__scriptname__,
-                                                                localize(32500),
-                                                                750,
-                                                                __icon__))
+        xbmc.executebuiltin("XBMC.Notification(%s,%s,%s,%s)" % (__scriptname__,text,750,__icon__))
         self.warning += 1
       settings.reconnect = True
       settings.run_init = True
@@ -113,10 +109,8 @@ class Main():
     else:
       self.warning = 0
       if settings.other_misc_notifications:
-        xbmc.executebuiltin("XBMC.Notification(%s,%s,%s,%s)" % (__scriptname__,
-                                                                localize(32501),
-                                                                750,
-                                                                __icon__))
+        text = __language__(32501)
+        xbmc.executebuiltin("XBMC.Notification(%s,%s,%s,%s)" % (__scriptname__,text,750,__icon__))
       log("connected to boblightd")
       bob.bob_set_priority(128)  
       return True
@@ -128,24 +122,23 @@ class Main():
   
     if loaded == 1:                                #libboblight not found                                               
       if platform == 'linux':
-        xbmcgui.Dialog().ok(__scriptname__,
-                            localize(32504),
-                            localize(32505),
-                            localize(32506))
+        t1 = __language__(32504)
+        t2 = __language__(32505)
+        t3 = __language__(32506)
+        xbmcgui.Dialog().ok(__scriptname__,t1,t2,t3)
       
-      else:
-        # ask user if we should fetch the lib for osx, ios and windows
-        if xbmcgui.Dialog().yesno(__scriptname__,
-                                  localize(32504),
-                                  localize(32509)):
+      else:                                        # ask user if we should fetch the
+        t1 = __language__(32504)                     # lib for osx, ios and windows
+        t2 = __language__(32509)
+        if xbmcgui.Dialog().yesno(__scriptname__,t1,t2):
           tools_downloadLibBoblight(platform,settings.other_misc_notifications)
           loaded = bob.bob_loadLibBoblight(libpath,platform)
       
         
     elif loaded == 2:         #no ctypes available
-      xbmcgui.Dialog().ok(__scriptname__,
-                          localize(32507),
-                          localize(32508))
+      t1 = __language__(32507)
+      t2 = __language__(32508)
+      xbmcgui.Dialog().ok(__scriptname__,t1,t2)
   
     return loaded  
 
@@ -158,16 +151,13 @@ def check_state():
 
 def myPlayerChanged(state):
   log('PlayerChanged(%s)' % state)
-  xbmc.sleep(1000)
+  xbmc.sleep(100)
   if state == 'stop':
     ret = "static"
   else:
-    ret = "movie"
     # Possible Videoplayer options: files, movies, episodes, musicvideos, livetv
     if xbmc.getCondVisibility("Player.HasVideo()"):
-      if xbmc.getCondVisibility('VideoPlayer.Content(movies)'):
-        ret = "movie"
-      elif xbmc.getCondVisibility("VideoPlayer.Content(musicvideos)"):
+      if xbmc.getCondVisibility("VideoPlayer.Content(musicvideos)"):
         ret = "musicvideo"
       elif xbmc.getCondVisibility("VideoPlayer.Content(episodes)"):
         ret = "tvshow"
@@ -192,10 +182,27 @@ def myPlayerChanged(state):
     elif xbmc.getCondVisibility("Player.HasAudio()"):
       ret = "static"
     else:
-      ret = "movie"
-
+      ret = "movie"  
+  
   settings.handleCategory(ret)
-  settings.handleStereoscopic(xbmc.getInfoLabel("System.StereoscopicMode") != "0")
+
+def set_image(pixels, width, height):
+  image = []
+  rgb = None
+  for y in range(height):
+    image_row = []
+    image.append(image_row)
+    row = width * y * 4
+    for x in range(width):
+      rgb = [
+        pixels[row + x * 4 + 2],
+        pixels[row + x * 4 + 1],
+        pixels[row + x * 4],
+      ]
+      image_row.append(rgb)
+  bob.bob_set_priority(128)
+  if not bob.bob_setimage(image, width, height):
+    log("error sending values: %s" % bob.bob_geterror())
 
 def run_boblight():
   main = Main()
@@ -221,21 +228,28 @@ def run_boblight():
             width = capture.getWidth();
             height = capture.getHeight();
             pixels = capture.getImage();
-            bob.bob_setscanrange(width, height)
-            rgb = (c_int * 3)()
-            for y in range(height):
-              row = width * y * 4
-              for x in range(width):
-                rgb[0] = pixels[row + x * 4 + 2]
-                rgb[1] = pixels[row + x * 4 + 1]
-                rgb[2] = pixels[row + x * 4]
-                bob.bob_addpixelxy(x, y, byref(rgb))
+            set_image_thread = Thread(target=set_image, args=(pixels, width, height, ))
+            set_image_thread.start()
+            # bob.bob_setscanrange(width, height)
+            # rgb = None # (c_int * 3)()
+            # for y in range(height):
+              # row = width * y * 4
+              # for x in range(width):
+                # #rgb[0] = pixels[row + x * 4 + 2]
+                # #rgb[1] = pixels[row + x * 4 + 1]
+                # #rgb[2] = pixels[row + x * 4]
+                # #bob.bob_addpixelxy(x, y, byref(rgb))
+                # rgb = [
+                    # pixels[row + x * 4 + 2],
+                    # pixels[row + x * 4 + 1],
+                    # pixels[row + x * 4],
+                  # ]
+                # bob.bob_addpixelxy(x, y, rgb)
 
-            bob.bob_set_priority(128)
-            if not bob.bob_sendrgb():
-              log("error sending values: %s" % bob.bob_geterror())
-              return   
-                        
+            # bob.bob_set_priority(128)
+            # if not bob.bob_sendrgb():
+              # log("error sending values: %s" % bob.bob_geterror())
+              # return   
       else:
         log('boblight disabled in Addon Settings')
         bob.bob_set_priority(255)
@@ -245,12 +259,11 @@ def run_boblight():
   del player_monitor
   del xbmc_monitor
 
-def localize(id):
-    return __language__(id).encode('utf-8','ignore')
-
 if ( __name__ == "__main__" ):
   run_boblight()
   bob.bob_set_priority(255) # we are shutting down, kill the LEDs     
   bob.bob_destroy()
-
-
+  #boblightada = BoblightAda()
+  #boblightada.connect()
+  #boblightada.test([00,00,255])
+  #boblightada.close()

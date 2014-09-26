@@ -41,6 +41,9 @@ c_int(self.libboblight.boblight_ping(boblight, int* outputused))
 """
 import sys
 import os
+import time
+import xbmc
+from boblightada import BoblightAda
 
 try:
   from ctypes import *
@@ -51,110 +54,103 @@ except:
 class Boblight():
   def __init__( self, *args, **kwargs ):
     self.current_priority = -1
-    self.libboblight      = None
-    self.bobHandle        = None
+    self.boblightada      = None
     self.connected        = False
     self.boblightLoaded   = False
 
   def bob_loadLibBoblight(self,libname,platform):
     ret = 0
-    if HAVE_CTYPES:
-      try:
-        if not os.path.exists(libname) and platform != "linux":
-          ret = 1
-        else:
-          self.libboblight = CDLL(libname)
-          self.libboblight.boblight_init.restype = c_void_p
-          self.libboblight.boblight_geterror.restype = c_char_p
-          self.libboblight.boblight_getlightname.restype = c_char_p
-          self.libboblight.boblight_getoptiondescript.restype = c_char_p
-          self.boblightLoaded = True
-          self.bobHandle = c_void_p(self.libboblight.boblight_init(None))
-          
-      except:
-        ret = 1
-    else:
-      ret = 2
+    try:
+      self.boblightada = BoblightAda()
+      self.boblightLoaded = True
+    except:
+      ret = 1
     return ret
   
   def bob_set_priority(self,priority):   
     ret = True
     if self.boblightLoaded and self.connected:
       if priority != self.current_priority:
+        if (priority == 255):
+          self.boblightada.static_color(self.boblightada.blank_color())
+          self.boblightada.stop()
         self.current_priority = priority
-        if not self.libboblight.boblight_setpriority(self.bobHandle, self.current_priority):
-          ret = False
     return ret
     
-  def bob_setscanrange(self,width, height):
+  def bob_setscanrange(self, width, height):
+    ret = False
     if self.boblightLoaded and self.connected:
-      self.libboblight.boblight_setscanrange(self.bobHandle, width, height)
+      self.boblightada.set_scan_range(width, height)
+      ret = True
+    return ret
     
+  def bob_setimage(self, image, width, height):
+    ret = False
+    if self.boblightLoaded and self.connected:
+      self.boblightada.set_image(image, width, height)
+      self.boblightada.flush_image()
+      ret = True
+    return ret
+  
   def bob_addpixelxy(self,x,y,rgb):
     if self.boblightLoaded and self.connected:
-      self.libboblight.boblight_addpixelxy(self.bobHandle, x, y, rgb)
+      self.boblightada.update_image(x, y, rgb)
   
   def bob_addpixel(self,rgb):
-    if self.boblightLoaded and self.connected:
-      self.libboblight.boblight_addpixel(self.bobHandle, -1, rgb)
+    return self.static_color(rgb)
   
   def bob_sendrgb(self):
     ret = False
     if self.boblightLoaded and self.connected:
-      ret = c_int(self.libboblight.boblight_sendrgb(self.bobHandle, 1, None))  != 0
+      #self.boblightada.flush_image()
+      self.boblightada.flush_image_async()
+      ret = True
     return ret
     
   def bob_setoption(self,option):
     ret = False
     if self.boblightLoaded and self.connected:
-      ret = c_int(self.libboblight.boblight_setoption(self.bobHandle, -1, option))  != 0
-    else:
       ret = True
     return ret
     
   def bob_getnrlights(self):
-    if HAVE_CTYPES:
-      ret = c_int(0)
-      if self.boblightLoaded and self.connected:
-        ret = c_int(self.libboblight.boblight_getnrlights(self.bobHandle))
-      return ret.value
-    else:
-      return 0
-    
-  def bob_getlightname(self,nr):
-    ret = ""
+    ret = 0
     if self.boblightLoaded and self.connected:
-      ret = self.libboblight.boblight_getlightname(self.bobHandle,nr)
+      ret = len(self.boblightada.leds)
+    return ret
+  
+  def bob_getlightname(self,nr):
+    ret = "Adalight"
     return ret
   
   def bob_connect(self,hostip, hostport):    
     if self.boblightLoaded:
-      ret = c_int(self.libboblight.boblight_connect(self.bobHandle, hostip, hostport, 1000000))
-      self.connected = ret.value != 0
-    else:
-      self.connected = False
+      try:
+	    self.boblightada.connect()
+	    self.connected = True
+      except:
+        self.connected = False
     return self.connected
     
   def bob_set_static_color(self,rgb):
     res = False
     if self.boblightLoaded and self.connected:
-      self.bob_addpixel(rgb)
-      res = self.bob_sendrgb()
+      self.boblightada.static_color(rgb)
+      res = True
     return res  
   
   def bob_destroy(self):
     if self.boblightLoaded:
-      self.libboblight.boblight_destroy(self.bobHandle)
+      self.boblightada.close()
       self.boblightLoaded = False
   
   def bob_geterror(self):
     ret = ""
-    if self.boblightLoaded:
-      ret = c_char_p(self.libboblight.boblight_geterror(self.bobHandle)).value
     return ret
   
   def bob_ping(self):
     ret = False
     if self.boblightLoaded and self.connected:
-      ret = c_int(self.libboblight.boblight_ping(self.bobHandle, None)).value == 1
+      self.boblightada.keepalive()
+      ret = True
     return ret

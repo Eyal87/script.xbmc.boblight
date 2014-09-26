@@ -85,7 +85,8 @@ def get_libname(platform):
     return "libboblight-ios.0.dylib"
   elif platform == "win32":
     return "libboblight-win32.0.dll"
-  elif platform == "linux":
+  else:
+    # platform == "linux"
     return "libboblight.so"
   
 def get_libpath(platform):
